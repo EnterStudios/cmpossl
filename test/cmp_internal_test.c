@@ -81,8 +81,12 @@ typedef struct test_fixture
 {
     const char* test_case_name;
     CMP_CTX *cmp_ctx;
+    /* for msg create tests */
     int bodytype;
     int err_code;
+    /* for protection tests */
+    CMP_PKIMESSAGE *msg;
+    int expected; /* expected outcome */
 } CMP_TEST_FIXTURE;
 
 EVP_PKEY *newkey;
@@ -118,7 +122,7 @@ static void tear_down(CMP_TEST_FIXTURE fixture)
     CMP_CTX_delete(fixture.cmp_ctx);
 }
 
-static int execute(CMP_TEST_FIXTURE fixture)
+static int execute_certreq_create_test(CMP_TEST_FIXTURE fixture)
 {
     int good = 1;
     CMP_PKIMESSAGE *req = NULL;
@@ -135,7 +139,22 @@ static int execute(CMP_TEST_FIXTURE fixture)
         printf("** %s failed **\n--------\n", fixture.test_case_name);
     }
 
-    CMP_PKIMESSAGE_free(req); /* TODO: that's not in cmp.h */
+    CMP_PKIMESSAGE_free(req);
+    return good;
+}
+
+static int execute_protection_test(CMP_TEST_FIXTURE fixture)
+{
+    int good = 1;
+    /* Execute the code under test, make assertions, format and print errors,
+     * return zero on success and one on error */
+    good = fixture.expected == CMP_validate_msg(fixture.cmp_ctx, fixture.msg);
+
+    if (!good)
+    {
+        printf("** %s failed **\n--------\n", fixture.test_case_name);
+    }
+
     return good;
 }
 
@@ -151,7 +170,55 @@ static int test_cmp_create_ir_with_msg_sig_alg_protection_plus_rsa_key()
     CMP_CTX_set0_newPkey(fixture.cmp_ctx, newkey);
     CMP_CTX_set1_referenceValue( fixture.cmp_ctx, ref_sec, 3); /* TODO hardcoded */
     CMP_CTX_set1_secretValue( fixture.cmp_ctx, ref_sec, 3); /* TODO hardcoded */
-    EXECUTE_TEST(execute, tear_down);
+    EXECUTE_TEST(execute_certreq_create_test, tear_down);
+}
+
+//unsigned char ref_1[] = {'4','7','8','7'};
+unsigned char sec_1[] = {'9','p','p','8','-','b','3','5','i','-','X','d','3',
+                         'Q','-','u','d','N','R'};
+
+static int test_cmp_validate_msg_mac_alg_protection()
+{
+    BIO *bio = NULL;
+    unsigned char buf[4096];
+    const unsigned char *buf_ptr = buf;
+    int len;
+
+    SETUP_TEST_FIXTURE(CMP_TEST_FIXTURE, set_up);
+    /* Do test case-specific set up; set expected return values and
+     * side effects */
+    CMP_CTX_set1_secretValue( fixture.cmp_ctx, sec_1, sizeof(sec_1));
+    fixture.expected = 1;
+
+    bio = BIO_new_file("cmp-test/CMP_IP_waitingStatus_PBM.der", "r");
+    if (!TEST_ptr(bio)) { printf("ERROR opening\n");
+        return 0;}
+    len = BIO_read(bio, buf, sizeof buf);
+    fixture.msg = d2i_CMP_PKIMESSAGE(NULL, &buf_ptr, len);
+    BIO_free(bio);
+    EXECUTE_TEST(execute_protection_test, tear_down);
+}
+
+static int test_cmp_validate_msg_mac_alg_protection_bad()
+{
+    BIO *bio = NULL;
+    unsigned char buf[4096];
+    const unsigned char *buf_ptr = buf;
+    int len;
+
+    SETUP_TEST_FIXTURE(CMP_TEST_FIXTURE, set_up);
+    /* Do test case-specific set up; set expected return values and
+     * side effects */
+    CMP_CTX_set1_secretValue( fixture.cmp_ctx, ref_sec, sizeof(ref_sec)); /* TODO: add something different? */
+    fixture.expected = 0;
+
+    bio = BIO_new_file("cmp-test/CMP_IP_waitingStatus_PBM.der", "r");
+    if (!TEST_ptr(bio)) { printf("ERROR opening\n");
+        return 0;}
+    len = BIO_read(bio, buf, sizeof buf);
+    fixture.msg = d2i_CMP_PKIMESSAGE(NULL, &buf_ptr, len);
+    BIO_free(bio);
+    EXECUTE_TEST(execute_protection_test, tear_down);
 }
 
 #if 0
@@ -192,6 +259,8 @@ int main(int argc, char *argv[])
     newkey = gen_rsa();
 
     ADD_TEST(test_cmp_create_ir_with_msg_sig_alg_protection_plus_rsa_key);
+    ADD_TEST(test_cmp_validate_msg_mac_alg_protection);
+    ADD_TEST(test_cmp_validate_msg_mac_alg_protection_bad);
 
     result = run_tests(argv[0]);
     ERR_print_errors_fp(stderr);
