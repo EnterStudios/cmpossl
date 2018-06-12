@@ -2024,7 +2024,7 @@ static int write_PKIMESSAGE(OSSL_CMP_CTX *ctx,
 
 /*-
  * Reads a DER-encoded OSSL_CMP_PKIMESSAGE from the file specified in infile
- * The CMP_MESSAGE must be freed by the caller
+ * The OSS_CMP_PKIMESSAGE must be freed by the caller
  *
  * returns a pointer to the parsed OSSL_CMP_PKIMESSAGE, null on error
  */
